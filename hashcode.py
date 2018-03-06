@@ -12,17 +12,17 @@ class IterRegistry(type):
     def __iter__(cls):
         return iter(cls._registry)
 
-class Car(object):
+class State(Enum):
+    IDLE = 0
+    WAITING = 1
+    TO_NEXT_START = 2
+    RIDING = 3
+    STOPPING = 4
+
+class Car:
     # Make iterable
     __metaclass__ = IterRegistry
     _registry = []
-
-    class State(Enum):
-        IDLE = 0
-        WAITING = 1
-        TO_NEXT_START = 2
-        RIDING = 3
-        STOPPING = 4
 
     def __init__(self, id):
         self._registry.append(self)
@@ -41,7 +41,7 @@ class Car(object):
                (self.id, self.state, self.coords[0], self.coords[1], \
                 self.ride.id if self.ride else -1, self.steps_to_goal)
 
-class Ride(Object):
+class Ride:
     # Make iterable
     __metaclass__ = IterRegistry
     _registry = []
@@ -91,18 +91,21 @@ def main():
 
     # Define module functions
     def read_file(filename): # Read the input file
-        NB_COLUMNS = 6
 
         with open(filename, 'r') as f:
             line = f.readline()
             init_grid = [int(n) for n in line.split()]
             max_rides = init_grid[3]
 
-            rides = np.zeros([max_rides, NB_COLUMNS], dtype=int)
+            dt = np.dtype([('start_row', 'u8'), ('start_col', 'u8'), \
+            ('end_row', 'u8'), ('end_col', 'u8'), \
+            ('bonus', 'u8'), ('latest_finish', 'u8')])
+
+            rides = np.zeros(max_rides, dtype=dt)
 
             for row in range(max_rides):
                 line = f.readline()
-                rides[row, :] = [int(n) for n in line.split()]
+                rides[row] = tuple([np.uint8(n) for n in line.split()])
 
         return init_grid, rides
 
@@ -115,6 +118,8 @@ def main():
     # Get inputs
     grid, rides_grid = read_file(input_file)
 
+    print(rides_grid)
+
     # Store the grid
     grid_size = [grid[0], grid[1]]
     num_cars = grid[2]
@@ -126,12 +131,18 @@ def main():
     rides = []
 
     # Instanciate cars
-    cars = [Car(self, i) for i in range(num_cars)]
+    cars = [Car(i) for i in range(num_cars)]
+
+    for idx, row in enumerate(rides_grid):
+        print(row)
+        a = rides_grid[idx]['start_row']
+        print(a)
 
     # Instanciate rides
-    rides = [Ride(self, i, [row[0], row[1]], [row[2], row [3]], row[4], row[5]) \
-    for row, idx in enumerate(rides_grid)]
-
+    '''rides = [Ride(idx, (idx][start_row], rides_grid[idx][start_col]), \
+    (rides_grid[idx][end_row], rides_grid[idx][end_col]), rides_grid[idx][bonus], \
+    rides_grid[idx][latest_finish]) for idx in rides_grid]
+    '''
     # Store distance (i.e. points) with each ride
     scores = np.zeros([max_rides, 2], dtype=int)
     for i in range(max_rides):
