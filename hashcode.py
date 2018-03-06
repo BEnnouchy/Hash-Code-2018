@@ -1,150 +1,138 @@
 import numpy as np
 import math
+import sys
 import argparse
+import logging
 
+from enum import Enum
 from time import sleep, time
 from tqdm import tqdm, trange
-
-from ioFiles import read_file, write_file
 
 class IterRegistry(type):
     def __iter__(cls):
         return iter(cls._registry)
 
 class Car(object):
-    #Make iterable
+    # Make iterable
     __metaclass__ = IterRegistry
     _registry = []
 
-    def __init__(self, number):
+    class State(Enum):
+        IDLE = 0
+        WAITING = 1
+        TO_NEXT_START = 2
+        RIDING = 3
+        STOPPING = 4
+
+    def __init__(self, id):
         self._registry.append(self)
-        self.number = number
-        self.row_pos = 0
-        self.col_pos = 0
-        self.is_taken = False
-        self.has_begun_ride = False
-        self.assigned_ride = None
-        self.rides = []
+        self.id = id
+        self.coords = [0, 0]
+        self.state = State.IDLE
+        self.ride_assigned = None
+        self.steps_to_goal = 0
+        self.rides_done = []
 
-    def take_ride(self, ride):
-        self.is_taken = True
-        self.assigned_ride = ride
-        self.rides.extend(ride)
+    def output(self):
+        return "%d %s" % (len(self.rides_done), ' '.join(map(str, self.rides_done)))
 
-    def release_car(self):
-        self.is_taken = False
-        self.has_begun_ride = False
-        self.assigned_ride = None
+    def __str__(self):
+        return "%d: %s at (%d, %d), ride: %d, remaining_steps: %d" % \
+               (self.id, self.state, self.coords[0], self.coords[1], \
+                self.ride.id if self.ride else -1, self.steps_to_goal)
 
-    def move(self, goal_x, goal_y):
-        if self.row_pos < goal_x:
-            self.row_pos += 1
-        elif self.row_pos > goal_x:
-            self.row_pos -= 1
-        elif self.col_pos < goal_y:
-            self.col_pos += 1
-        elif self.col_pos > goal_y:
-            self.col_pos -= 1
-        else:   #At destination
-            self.release_car()
+class Ride(Object):
+    # Make iterable
+    __metaclass__ = IterRegistry
+    _registry = []
+
+    def __init__(self, id, start, end, early_start, latest_finish):
+        self._registry.append(self)
+        self.id = id
+        self.start = start
+        self.end = end
+        self.early_start = early_start
+        self.latest_finish = latest_finish
+        self.score = Ride.distance(start, finish)
+
+    @staticmethod
+    def distance(origin, destination):
+        return abs(origin[0] - destination[0]) + abs(origin[1] - destination[1])
+
+    def __str__(self):
+        return "%d: [%d, %d] -> [%d, %d], early_start: %d, latest_finish: %d, score: %d" % \
+               (self.id, self.start[0], self.start[1], self.end[0], self.end[1], \
+               self.early_start, self.latest_finish, self.score)
 
 def main():
-    '''
-    Main function
-    '''
+    # ## Main function ###
 
-    #Defining the arguments
+    # Define logger
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    # Defining the arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--in_file', help="location of the input file",
                         type=str)
     parser.add_argument('-o', '--out_file', help="location of the output file",
                         type=str)
 
-    #Default files
+    # Default files
     input_file = './in/a_example.in'
     output_file = './out/rides.out'
 
-    #Parsing the arguments
+    # Parsing the arguments
     args = parser.parse_args()
     if args.in_file:
         input_file = args.in_file
     if args.out_file:
         output_file = args.out_file
 
-    def distance_of_ride(rides, ride):
-        return abs(rides[ride][0] - rides[ride][2]) + abs(rides[ride][1] - rides[ride][3])
+    # Define module functions
+    def read_file(filename): # Read the input file
+        NB_COLUMNS = 6
 
-    def distance_to_start(car, rides, ride):
-        return abs(rides[ride][2] - car.row_pos) + abs(rides[ride][3] - car.col_pos)
+        with open(filename, 'r') as f:
+            line = f.readline()
+            init_grid = [int(n) for n in line.split()]
+            max_rides = init_grid[3]
 
-    def purge_rides(time_step):
-        for ride in range(max_rides):
-             if rides_with_scores[ride, 8] == True:
-                 #If ride can not be complished, it is purged
-                 if rides_with_scores[ride][0] < time_max - time_step:
-                     rides_with_scores[ride, 8] == False
-        return True
+            rides = np.zeros([max_rides, NB_COLUMNS], dtype=int)
 
-    def can_be_finished(car, ride, time_step):
-        result = False
-        if distance_to_start(car, rides_with_scores, ride) + rides_with_scores[ride][0] < rides_with_scores[ride][8] - time_step:
-            result = True
-        return result
+            for row in range(max_rides):
+                line = f.readline()
+                rides[row, :] = [int(n) for n in line.split()]
 
-    def can_have_bonus(car, ride, time_step):
-        result = False
-        if distance_to_start(car, rides_with_scores, ride) + time_step < rides_with_scores[ride][7]:
-            result = True
-        return result
+        return init_grid, rides
 
-    def assign_rides_and_move(time_step):
-        for car in car_list:
-            if car.is_taken == False:
-                best_ride = find_best_ride(car, time_step)
-                if best_ride != -1:
-                    car.assigned_ride=best_ride
-                    car.rides.append(best_ride)
-                    rides_with_scores[best_ride, 8] = False
-                    car.is_taken = True
-            elif car.has_begun_ride ==  True:
-                car.move(rides_with_scores[car.assigned_ride][4], rides_with_scores[car.assigned_ride][5])
-            elif car.has_begun_ride ==  False:
-                car.move(rides_with_scores[car.assigned_ride][2], rides_with_scores[car.assigned_ride][3])
-        return True
+    def write_file(num_cars, cars, filename): # Write the output file
 
-    def find_best_ride(car, time_step):
-        best_ride = 0
-        for ride in range(max_rides):
-            if rides_with_scores[ride, 8] == True:
-                if can_be_finished(car, ride, time_step):
-                    best_ride = ride
-                    break
-        return best_ride
+        with open(filename, 'w') as f:
+            for car in cars:
+                f.write(' '.join(car.output()) + '\n')
 
-    def write_rides():
-        rides_taken = []
+    # Get inputs
+    grid, rides_grid = read_file(input_file)
 
-        for car in car_list:
-            temp_list = car.rides
-            temp_list.insert(0, len(car.rides))
-            rides_taken.append(temp_list)
-        return rides_taken
-
-    grid, rides = read_file(input_file)
-
-    #Store the grid
+    # Store the grid
     grid_size = [grid[0], grid[1]]
     num_cars = grid[2]
     max_rides = grid[3]
     bonus = grid[4]
     time_max = grid[5]
 
-    #Instanciate cars
-    car_list = []
-    for i in range(num_cars):
-        car_list.append(Car(i))
+    # Define variables
+    rides = []
 
-    #Store distance (i.e. points) with each ride
+    # Instanciate cars
+    cars = [Car(self, i) for i in range(num_cars)]
+
+    # Instanciate rides
+    rides = [Ride(self, i, [row[0], row[1]], [row[2], row [3]], row[4], row[5]) \
+    for row, idx in enumerate(rides_grid)]
+
+    # Store distance (i.e. points) with each ride
     scores = np.zeros([max_rides, 2], dtype=int)
     for i in range(max_rides):
         scores[i, 0] = distance_of_ride(rides, i)
