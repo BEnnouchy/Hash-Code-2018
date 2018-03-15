@@ -6,62 +6,24 @@ import sys
 import argparse
 import logging
 
-from enum import Enum, unique
 from time import sleep, time
 from tqdm import tqdm, trange
-from colorama import init, Fore, Back, Style
-
-# Init colorama
-#init(autoreset=True)
 
 class IterRegistry(type):
     def __iter__(cls):
         return iter(cls._registry)
-
-@unique
-class State(Enum):
-    IDLE = 0
-    WAITING = 1
-    TO_NEXT_START = 2
-    AT_START = 3
-    RIDING = 4
-    AT_DESTINATION = 5
-    STOPPING = 6
 
 class Car:
     # Make iterable
     __metaclass__ = IterRegistry
     _registry = []
 
-    def __init__(self, id):
+    def __init__(self, id, rides):
         self._registry.append(self)
         self.id = id
         self.coords = [0, 0]
-        self.state = State.IDLE
-        self.ride_assigned = None
-        self.steps_to_goal = 0
-        self.rides_done = []
-
-    def eval_state(self):
-        if self.steps_to_goal > 1:
-            self.steps_to_goal -= 1
-
-        elif self.state == State.RIDING:
-            self.state = State.AT_DESTINATION
-            self.rides_done.append(self.ride_assigned.id)
-            self.ride_assigned = self.get_ride()
-            if self.ride_assigned == None:
-                self.state = State.STOPPING
-            else:
-                self.state = State.TO_NEXT_START
-
-        elif self.state == State.TO_NEXT_START:
-            self.state = State.AT_START
-            self.steps_to_goal = ride_assigned.score
-            self.state = State.RIDING
-
-    def output(self):
-        return "%d %s" % (len(self.rides_done), ' '.join(map(str, self.rides_done)))
+        self.rides_assigned = rides
+        self.step = 0
 
     def __str__(self):
         return "%d: %s at (%d, %d), ride: %d, remaining_steps: %d" % \
@@ -88,13 +50,10 @@ class Ride:
         return abs(origin[0] - destination[0]) + abs(origin[1] - destination[1])
 
     def valid_ride(self, step):
-        result = step + Ride.distance(self.start, self.end) < self.latest_finish
-        if result == False:
-            self.done = True
-        return result
+        return step + Ride.distance(self.start, self.end) < self.latest_finish
 
-    def early_ride(self, coords, step):
-        return step + Ride.distance(self.start, coords) < self.early_start
+    def early_ride(self, step):
+        return step <= self.early_start
 
     def __str__(self):
         return "%d: [%d, %d] -> [%d, %d], early_start: %d, latest_finish: %d, score: %d" % \
@@ -113,9 +72,9 @@ def main():
 
     # Defining the arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--in_file', help="location of the input file",
+    parser.add_argument('-i', '--in_file', help="location of the input problem file",
                         type=str)
-    parser.add_argument('-o', '--out_file', help="location of the output file",
+    parser.add_argument('-s', '--sol_file', help="location of the solution file",
                         type=str)
 
     # Default files
@@ -131,11 +90,16 @@ def main():
     args = parser.parse_args()
     if args.in_file:
         input_file = args.in_file
-    if args.out_file:
-        output_file = args.out_file
+    if args.sol_file:
+        solution_file = args.sol_file
 
-    # Define module functions
-    def read_file(filename): # Read the input file
+    def file_len(filename):
+        with open(filename, 'r') as f:
+            for i, l in enumerate(f):
+                pass
+        return i+1
+
+    def read_in_file(filename): # Read the input problem file
 
         with open(filename, 'r') as f:
             line = f.readline()
@@ -154,19 +118,13 @@ def main():
 
         return init_grid, rides
 
-    def write_file(cars, filename): # Write the output file
+    def red_sol_file(filename):
 
-        with open(filename, 'w') as f:
-            for car in cars:
-                f.write(' '.join(car.output()) + '\n')
-
-    def purge_rides(rides, step):
-        for ride in rides:
-            if ride.valid_ride(step) == False:
-                ride.done = True
-
-    def find_best_ride():
-        return Rides(1)
+            if file_len(filename) == num_cars:
+                with open(filename, 'r') as f:
+                    rides = [f.readline().split()]
+            else:
+                pass
 
     # Get inputs
     grid, rides_grid = read_file(input_file)
@@ -190,8 +148,6 @@ def main():
     for time_step in trange(time_max):
         logger.debug("Time step : %d" % time_step)
         purge_rides(rides, time_step)
-
-    write_file(cars, output_file)
 
     # Get Stop time
     stop_time = time()
